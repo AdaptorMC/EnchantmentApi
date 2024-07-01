@@ -15,6 +15,9 @@
 	"icon": "icon.png",
 	"environment": "*",
 	"entrypoints": {
+		"client": [
+			"net.adaptor.enchantment.client.EnchantmentApiClient"
+		],
 		"main": [
 			"net.adaptor.enchantment.Main"
 		]

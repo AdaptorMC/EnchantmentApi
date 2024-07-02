@@ -26,7 +26,6 @@ public class Main implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		EnchantmentXRegistry.registerXProvider(new ModEnchantmentXInit());
-//		ServerTickEvents.START_SERVER_TICK.register(EnchantmentEvent::enchantmentServerTickHandler);
 		ServerTickEvents.END_WORLD_TICK.register(EnchantmentEvent::enchantmentWorldTickHandler);
 		AttackEntityCallback.EVENT.register(EnchantmentEvent::attackEntityHandler);
 		UseItemCallback.EVENT.register(EnchantmentEvent::useItemHandler);

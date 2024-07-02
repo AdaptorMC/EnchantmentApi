@@ -14,13 +14,6 @@ import net.minecraft.util.hit.HitResult;
 import net.minecraft.world.World;
 
 public class EnchantmentEvent {
-    public static void enchantmentServerTickHandler(MinecraftServer server) {
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-            for (EnchantmentX x: EnchantmentXRegistry.getEnchantmentXs()) {
-                x.tickHandler(server,player);
-            }
-        }
-    }
     public static void enchantmentWorldTickHandler(World world) {
         MinecraftServer server = world.getServer();
         if (server == null) return;

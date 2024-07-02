@@ -4,61 +4,51 @@ import net.minecraft.enchantment.Enchantment;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.registry.tag.TagKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.Hand;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
 import java.util.List;
 
 public class EnchantmentX {
 
+    public static int lastTick = 0;
+
     private ItemStack itemStack;
     private final RegistryKey<Enchantment> enchantment;
     public EquipmentSlot slot;
-    private EnchantmentExecutor tickExecutor;
-    private AttackEntityHandler entityAttackExecutor;
+    private TickHandler tickHandler;
+    private AttackEntityHandler attackEntityHandler;
     private ItemUseHandler itemUseHandler;
-    private int gap;
 
     public EnchantmentX(RegistryKey<Enchantment> enchantment) {
         this.itemStack = ItemStack.EMPTY;
         this.enchantment = enchantment;
         this.slot = EquipmentSlot.BODY;
-        this.gap = 20;
-        this.tickExecutor = null;
-        this.entityAttackExecutor = null;
+        this.tickHandler = null;
+        this.attackEntityHandler = null;
         this.itemUseHandler = null;
     }
-
-    public EnchantmentX setGap(int gap) {
-        this.gap = gap;
-        return this;
-    }
-
     public EnchantmentX setSlot(EquipmentSlot slot) {
         this.slot = slot;
         return this;
     }
 
-    public EnchantmentX setTickExecutor(EnchantmentExecutor executor) {
-        this.tickExecutor = executor;
+    public EnchantmentX setTickHandler(TickHandler executor) {
+        this.tickHandler = executor;
         return this;
     }
 
-    public EnchantmentX setEntityAttackExecutor(AttackEntityHandler executor) {
-        this.entityAttackExecutor = executor;
+    public EnchantmentX setAttackEntityHandler(AttackEntityHandler executor) {
+        this.attackEntityHandler = executor;
         return this;
     }
 
@@ -67,125 +57,67 @@ public class EnchantmentX {
         return this;
     }
 
+    /*
+    * Handlers that handler from different events
+    * every enchantment can do different purpose in different situation
+    * */
+    /*
+    * Tick handler that process every tick
+    * avoid use this is recommend
+    * */
     @FunctionalInterface
-    public interface EnchantmentExecutor {
+    public interface TickHandler {
         void run(MinecraftServer server, ServerPlayerEntity player, int level);
     }
-
+    public void tickHandler(MinecraftServer server, ServerPlayerEntity player) {
+        if (tickHandler ==null) return;
+        if (lastTick==server.getTicks()) return;
+        lastTick = server.getTicks();
+        if (player.getEquippedStack(slot).isEmpty()) return;
+        itemStack = player.getEquippedStack(slot);
+        if (noEnchantment(server)) return;
+        tickHandler.run(server,player, getLevel(server));
+    }
+    /*
+     * Attack handler that process when hit an entity
+     * */
     @FunctionalInterface
     public interface AttackEntityHandler {
         void run(PlayerEntity player, World world, Hand hand, Entity entity, HitResult hitResult, int level);
     }
-
+    public void entityAttackHandler(PlayerEntity player, World world, Hand hand, Entity entity, HitResult hitResult) {
+        if (attackEntityHandler == null) return;
+        if (world.getServer()==null) return;
+        if (noEnchantment(world.getServer())) return;
+        attackEntityHandler.run(player,world,hand,entity,hitResult,getLevel(world.getServer()));
+    }
+    /*
+     * Handler that process when use item (Right Click)
+     * */
     @FunctionalInterface
     public interface ItemUseHandler {
         void run(PlayerEntity player, World world, Hand hand, int level);
     }
-
-    public void tickHandler(MinecraftServer server, ServerPlayerEntity player) {
-        if (player.getEquippedStack(slot).isEmpty()) return;
-        itemStack = player.getEquippedStack(slot);
-        if (!itemStack.hasEnchantments()) return;
-        if (!itemStack.getEnchantments().getEnchantments().contains(of(server,enchantment.getValue()))) return;
-        if (tickExecutor ==null) return;
-        String current = "enchantment_api."+enchantment.getValue().toTranslationKey()+"#"+player.age;
-        if (player.getCommandTags().isEmpty()) {
-            tickExecutor.run(server,player, EnchantmentHelper.getLevel(of(server,enchantment.getValue()),itemStack));
-            player.addCommandTag(current);
-        }
-        else {
-            for (String commandTag:player.getCommandTags()) {
-                List<String> part = List.of(commandTag.split("#"));
-                if (part.size()!=2) return;
-                if (part.getFirst().equals("enchantment_api."+enchantment.getValue().toTranslationKey())) {
-                    int lastTime = Integer.parseInt(part.getLast());
-                    if (Math.abs(player.age-lastTime)>gap) {
-                        tickExecutor.run(server,player, EnchantmentHelper.getLevel(of(server,enchantment.getValue()),itemStack));
-                        player.removeCommandTag(commandTag);
-                        player.addCommandTag(current);
-                    }
-                }
-                else {
-                    tickExecutor.run(server,player, EnchantmentHelper.getLevel(of(server,enchantment.getValue()),itemStack));
-                    player.addCommandTag(current);
-                }
-            }
-        }
-    }
-
-    public void entityAttackHandler(PlayerEntity player, World world, Hand hand, Entity entity, HitResult hitResult) {
-        if (entityAttackExecutor == null) return;
-        if (world.getServer()==null) return;
-        entityAttackExecutor.run(player,world,hand,entity,hitResult,EnchantmentHelper.getLevel(of(world.getServer(),enchantment.getValue()),itemStack));
-    }
-
     public void itemUseHandler(PlayerEntity player,World world, Hand hand) {
+        if (itemUseHandler == null) return;
         if (world.getServer()==null) return;
-        itemUseHandler.run(player,world,hand,EnchantmentHelper.getLevel(of(world.getServer(),enchantment.getValue()),itemStack));
+        if (noEnchantment(world.getServer())) return;
+        itemUseHandler.run(player,world,hand,getLevel(world.getServer()));
+    }
+    /*
+    * common functions
+    * */
+    public boolean noEnchantment(MinecraftServer server) {
+        if (!itemStack.hasEnchantments()) return true;
+        return !itemStack.getEnchantments().getEnchantments().contains(getEntry(server, enchantment.getValue()));
+    }
+    public int getLevel(MinecraftServer server) {
+        return EnchantmentHelper.getLevel(getEntry(server,enchantment.getValue()),itemStack);
     }
 
-    public static void leachHandler(MinecraftServer server, ServerPlayerEntity player) {
-//        ItemStack item = player.getEquippedStack(EquipmentSlot.MAINHAND);
-//        if (hasEnchantment(item, ModTags.Enchantments.LEACH)) {
-//            int gap = player.age - player.getLastAttackTime();
-//
-//            if (gap < 20 && gap % 5 == 0) {
-//                float value = (float) (player.getAttributes().getValue(EntityAttributes.GENERIC_ATTACK_DAMAGE) * 0.02 * level(server, item, Main.id("leach")));
-//                player.heal(value);
-//                player.sendMessage(Text.of("+❤" + 4 * value), true);
-//            }
-//        }
-    }
-
-    public static void manicHandler(MinecraftServer server, ServerPlayerEntity player) {
-//        ItemStack item = player.getEquippedStack(EquipmentSlot.MAINHAND);
-//        if (hasEnchantment(item, ModTags.Enchantments.MANIC)) {
-//            int level = level(server, item, Main.id("manic"));
-//
-//            int gap = player.age - player.getLastAttackTime();
-//
-//            if (gap < 20 && gap % 5 == 0) {
-//                float value = (float) (player.getAttributes().getValue(EntityAttributes.GENERIC_ATTACK_DAMAGE) * 0.02 * level);
-//                LivingEntity target = getNearestEntity(player.getWorld(), player, level);
-//                if (target != null) target.damage(player.getDamageSources().magic(), value * 2);
-//                player.damage(player.getDamageSources().magic(), value);
-//            }
-//        }
-    }
-
-    public static boolean hasEnchantment(ItemStack itemStack, TagKey<Enchantment> enchantment) {
-        return EnchantmentHelper.hasAnyEnchantmentsIn(itemStack, enchantment);
-    }
-
-    public boolean checkEnchantment (ServerPlayerEntity player) {
-        if (player.getMainHandStack().getItem().equals(this.itemStack.getItem())) return false;
-        return false;
-    }
-
-    private static RegistryEntry<Enchantment> of(MinecraftServer server, Identifier id) {
+    private static RegistryEntry<Enchantment> getEntry(MinecraftServer server, Identifier id) {
         return server.getRegistryManager().get(RegistryKeys.ENCHANTMENT)
                 .getEntry(id)
                 .orElseThrow(() -> new IllegalArgumentException("Enchantment with id " + id + " not found"));
-    }
-
-    public static LivingEntity getNearestEntity(World world, Entity sourceEntity, double maxDistance) {
-        Vec3d sourcePos = sourceEntity.getPos();
-        Box searchBox = new Box(
-                sourcePos.x - maxDistance, sourcePos.y - maxDistance, sourcePos.z - maxDistance,
-                sourcePos.x + maxDistance, sourcePos.y + maxDistance, sourcePos.z + maxDistance
-        );
-
-        LivingEntity nearestEntity = null;
-        double nearestDistance = Double.MAX_VALUE;
-
-        for (LivingEntity entity : world.getEntitiesByClass(LivingEntity.class, searchBox, e -> e != sourceEntity)) {
-            double distance = entity.squaredDistanceTo(sourcePos);
-            if (distance < nearestDistance) {
-                nearestDistance = distance;
-                nearestEntity = entity;
-            }
-        }
-
-        return nearestEntity;
     }
 }

@@ -22,7 +22,7 @@ public class EnchantmentDescTooltip implements ItemTooltipCallback {
             String translateKey = registryKey.getValue().toTranslationKey("enchantment"); // mojang change a thing need to get by this :( | this one is prefix like <prefix>.<id>.desc
             for (int i = 0; i < lines.size(); i++) {
                 if (lines.get(i).getContent() instanceof TranslatableTextContent text && text.getKey().equals(translateKey)) {
-                    Main.LOGGER.info(translateKey);
+//                    Main.LOGGER.info(translateKey);
                     lines.add(i + 1, Text.literal(" - ").formatted(Formatting.GRAY).append(Text.translatable(translateKey + ".desc").formatted(Formatting.DARK_GRAY)));
                     break;
                 }
